@@ -1,13 +1,7 @@
-import { InitDatabase, insert, db_messages } from "./database";
-import { sync, _messages } from './sync';
+import { InitDatabase } from "./database";
 
 
-window.db_messages = db_messages;
-window.insert = insert;
-
+window.main = main;
 async function main() {
-    console.log("MAIN");
-    window.db = await InitDatabase();
+    return await InitDatabase();
 }
-
-main();
