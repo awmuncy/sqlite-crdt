@@ -1,10 +1,6 @@
-(function(root, factory) {
-  if (typeof exports === 'object') {
-    module.exports = factory();
-  } else {
-    root.merkle = factory();
-  }
-})(this, function() {
+
+
+export default (this, function() {
   function getKeys(trie) {
     return Object.keys(trie).filter(x => x !== 'hash');
   }
@@ -116,4 +112,4 @@
     prune,
     debug
   };
-});
+})();

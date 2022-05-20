@@ -10,4 +10,5 @@ mix
             }
         }
     })
-    .js('./src/index.js', './dist/index.js');
+    .js('./src/index.js', './dist/index.js')
+    .sourceMaps();

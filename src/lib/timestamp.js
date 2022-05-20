@@ -1,12 +1,5 @@
-(function(root, factory) {
-  if (typeof exports === 'object') {
-    module.exports = factory(require('murmurhash'));
-  } else {
-    let { Timestamp, MutableTimestamp } = factory(root.murmur);
-    root.Timestamp = Timestamp;
-    root.MutableTimestamp = MutableTimestamp;
-  }
-})(this, function(murmurhash) {
+import murmurhash from 'murmurhash';
+
   var config = {
     // Maximum physical clock drift allowed, in ms
     maxDrift: 60000
@@ -225,5 +218,4 @@
     }
   };
 
-  return { Timestamp, MutableTimestamp };
-});
+export { Timestamp, MutableTimestamp };

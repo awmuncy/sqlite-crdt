@@ -1,3 +1,12 @@
+import { setClock, makeClock, makeClientId, getClock } from "./lib/clock";
+import { Timestamp } from "./lib/timestamp";
+import { db_messages, UpdateInto } from "./database";
+import merkle from './lib/merkle';
+
+
+
+
+
 setClock(makeClock(new Timestamp(0, 0, makeClientId())));
 
 let _onSync = null;
@@ -24,21 +33,12 @@ async function post(data) {
 }
 
 function apply(msg) {
-  // let table = _data[msg.dataset];
-  // if (!table) { // Improve this to a query;
-  //   throw new Error('Unknown dataset: ' + msg.dataset);
-  // }
+  let tableExist = db.exec(`SELECT * FROM sqlite_schema WHERE type = 'table' AND name = '${msg.dataset}';`).length;
+  if (!tableExist) { // Improve this to a query;
+    throw new Error('Unknown dataset: ' + msg.dataset);
+  }
 
-  // let row = table.find(row => row.id === msg.row);
-  // if (!row) {
-  //     // REPLACE INTO ${msg.dataset} (msg.id, msg.column) values (msg.id, msg.value);
-
-  //   table.push({ id: msg.row, [msg.column]: msg.value });
-  // } else {
-  //   row[msg.column] = msg.value;
-  // }
-  let column = msg.column == "order" ? "ordered" : msg.column;
-  UpdateInto(msg.dataset, column, msg.row, msg.value);
+  UpdateInto(msg.dataset, msg.column, msg.row, msg.value);
 }
 
 function compareMessages(messages) {
@@ -48,7 +48,7 @@ function compareMessages(messages) {
   // find the latest message that exists for the dataset/row/column
   // for each incoming message, so sort it first
 
-  let sortedMessages = [..._messages].sort((m1, m2) => {
+  let sortedMessages = [...db_messages].sort((m1, m2) => {
     if (m1.timestamp < m2.timestamp) {
       return 1;
     } else if (m1.timestamp > m2.timestamp) {
@@ -87,7 +87,7 @@ function applyMessages(messages) {
         clock.merkle,
         Timestamp.parse(msg.timestamp)
       );
-      _messages.push(msg);
+      db_messages.push(msg);
     }
   });
 
@@ -121,7 +121,7 @@ async function sync(initialMessages = [], since = null) {
 
   if (since) {
     let timestamp = new Timestamp(since, 0, '0').toString();
-    messages = _messages.filter(msg => msg.timestamp >= timestamp);
+    messages = db_messages.filter(msg => msg.timestamp >= timestamp);
   }
 
   let result;
@@ -153,4 +153,9 @@ async function sync(initialMessages = [], since = null) {
 
     return sync([], diffTime);
   }
+}
+
+export {
+  sync,
+  sendMessages
 }
