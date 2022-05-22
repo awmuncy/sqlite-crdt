@@ -95,7 +95,7 @@ async function InitDatabase() {
 
   function sendMessages(messages) {
     applyMessages(messages);
-    // sync(messages);
+    sync(messages);
   }
 
   function receiveMessages(messages) {
@@ -148,6 +148,7 @@ async function InitDatabase() {
   }
 
   function UpdateInto(dataset, column, id, value) {
+    
       db.run(`
 
           INSERT INTO ${dataset} (id, ${column}) VALUES('${id}', '${value}')
@@ -261,7 +262,8 @@ async function InitDatabase() {
       insert,
       db_messages,
       listMessages,
-      receiveMessages
+      receiveMessages,
+      update
     };
     
 }

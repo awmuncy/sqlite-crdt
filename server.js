@@ -1,8 +1,8 @@
 let express = require('express');
 let bodyParser = require('body-parser');
 let cors = require('cors');
-let { Timestamp } = require('./timestamp');
-let merkle = require('./merkle');
+let { Timestamp } = require('./server_lib/timestamp');
+let merkle = require('./server_lib/merkle');
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 
