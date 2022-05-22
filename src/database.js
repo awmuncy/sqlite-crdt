@@ -3,15 +3,86 @@ import {v4 as uuidv4} from 'uuid';
 import { makeClientId, Clock } from "./lib/clock";
 import { Timestamp } from "./lib/timestamp";
 import merkle from './lib/merkle';
-
+import { deserializeValue, serializeValue } from './lib/serialize';
 
 
 
 
 async function InitDatabase() {
 
-  const clock = new Clock(new Timestamp(0, 0, makeClientId()));
-  let db_messages = [];
+    const SQL = await initSqlJs({
+    // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
+    // You can omit locateFile completely when running in node
+        locateFile: file => file
+    });
+
+
+    const db = new SQL.Database();
+
+
+  function dataMessages() {
+    let database_messages = db.exec("SELECT * FROM messages;")[0]?.values || [];
+
+    let db_messages = database_messages.map(row => {
+      return {
+        timestamp: row[0],
+        group_id: row[1],
+        dataset: row[2],
+        row: row[3],
+        column: row[4],
+        value: row[5]
+      }
+    });
+
+    return db_messages;
+  }
+
+
+  function addMessages(groupId, messages) {
+    let trie = getMerkle(groupId);
+
+    queryRun('BEGIN');
+
+    try {
+      for (let message of messages) {
+        const { dataset, row, column, value, timestamp } = message;
+
+        let res = queryRun(
+          `INSERT OR IGNORE INTO messages (timestamp, group_id, dataset, row, column, value) VALUES
+            (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+          [timestamp, groupId, dataset, row, column, serializeValue(value)]
+        );
+
+        // Should probably add this back
+        //if (res.changes === 1) {
+          // Update the merkle trie
+          trie = merkle.insert(trie, Timestamp.parse(message.timestamp));
+        //}
+      }
+
+      queryRun(
+        'INSERT OR REPLACE INTO messages_merkles (group_id, merkle) VALUES (?, ?)',
+        [groupId, JSON.stringify(trie)]
+      );
+      queryRun('COMMIT');
+    } catch (e) {
+      queryRun('ROLLBACK');
+      throw e;
+    }
+
+
+    return trie;
+  }
+
+  function queryRun(sql, params = []) {
+    let stmt = db.prepare(sql);
+    stmt.bind(params);
+    let res = [];
+    while(stmt.step()) {
+        res.push(stmt.get())
+    }
+    return res;
+  }
 
   async function post(data) {
     let res = await fetch('http://localhost:8006/sync', {
@@ -45,7 +116,7 @@ async function InitDatabase() {
     // find the latest message that exists for the dataset/row/column
     // for each incoming message, so sort it first
 
-    let sortedMessages = [...db_messages].sort((m1, m2) => {
+    let sortedMessages = [...dataMessages()].sort((m1, m2) => {
       if (m1.timestamp < m2.timestamp) {
         return 1;
       } else if (m1.timestamp > m2.timestamp) {
@@ -78,20 +149,23 @@ async function InitDatabase() {
         apply(msg);
       }
 
+      let res = queryRun(
+        `INSERT OR IGNORE INTO messages (timestamp, group_id, dataset, row, column, value) VALUES
+           (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+        [msg.timestamp, "my-group", msg.dataset, msg.row, msg.column, serializeValue(msg.value)]
+      );
+
+
       if (!existingMsg || existingMsg.timestamp !== msg.timestamp) {
         clock.merkle = merkle.insert(
           clock.merkle,
           Timestamp.parse(msg.timestamp)
         );
-        db_messages.push(msg);
       }
     });
 
   }
 
-  function listMessages(messages) {
-    return db_messages;
-  }
 
   function sendMessages(messages) {
     applyMessages(messages);
@@ -109,11 +183,13 @@ async function InitDatabase() {
 
   async function sync(initialMessages = [], since = null) {
 
+
+
     let messages = initialMessages;
 
     if (since) {
       let timestamp = new Timestamp(since, 0, '0').toString();
-      messages = db_messages.filter(msg => msg.timestamp >= timestamp);
+      messages = dataMessages().filter(msg => msg.timestamp >= timestamp);
     }
 
     let result;
@@ -208,13 +284,19 @@ async function InitDatabase() {
     ]);
   }
 
-    const SQL = await initSqlJs({
-    // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
-    // You can omit locateFile completely when running in node
-        locateFile: file => file
-    });
+  function getMerkle(group_id) {
+    let rows = queryRun('SELECT * FROM messages_merkles WHERE group_id = ?', [
+      group_id
+    ]);
 
-    const db = new SQL.Database();
+    if (rows.length > 0) {
+      return JSON.parse(rows[0][1]);
+    } else {
+      // No merkle trie exists yet (first sync of the app), so create a
+      // default one.
+      return {};
+    }
+  }
 
     db.run(`
         CREATE TABLE todos
@@ -228,8 +310,8 @@ async function InitDatabase() {
         CREATE TABLE users
             (
                 id text primary key,
-                email text unique,
-                username text unique,
+                email text,
+                username text,
                 password text,
                 tombstone integer
             );
@@ -254,16 +336,32 @@ async function InitDatabase() {
                 status text,
                 tombstone integer
             );
+          CREATE TABLE messages
+            (timestamp TEXT,
+            group_id TEXT,
+            dataset TEXT,
+            row TEXT,
+            column TEXT,
+            value TEXT,
+            PRIMARY KEY(timestamp, group_id));
+
+          CREATE TABLE messages_merkles
+            (group_id TEXT PRIMARY KEY,
+            merkle TEXT);
     `);
 
+
+  // TODO:  Check for client id, else make else ID
+  const clock = new Clock(new Timestamp(0, 0, makeClientId()));
+  clock.merkle = getMerkle('my-group');
 
     return { 
       db,
       insert,
-      db_messages,
-      listMessages,
       receiveMessages,
-      update
+      update,
+      sync,
+      dataMessages
     };
     
 }

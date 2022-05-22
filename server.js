@@ -54,15 +54,7 @@ let app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '20mb' }));
 
-function queryAll(sql, params = []) {
-  let stmt = db.prepare(sql);
-  stmt.bind(params);
-  let res = [];
-  while(stmt.step()) {
-      res.push(stmt.get())
-  }
-  return res;
-}
+
 
 function queryRun(sql, params = []) {
   let stmt = db.prepare(sql);
@@ -101,7 +93,7 @@ function deserializeValue(value) {
 }
 
 function getMerkle(group_id) {
-  let rows = queryAll('SELECT * FROM messages_merkles WHERE group_id = ?', [
+  let rows = queryRun('SELECT * FROM messages_merkles WHERE group_id = ?', [
     group_id
   ]);
 
@@ -129,6 +121,7 @@ function addMessages(groupId, messages) {
         [timestamp, groupId, dataset, row, column, serializeValue(value)]
       );
 
+        
       // Should probably add this back
       //if (res.changes === 1) {
         // Update the merkle trie
@@ -152,17 +145,13 @@ fs.writeFileSync("./db.db", buffer);
   return trie;
 }
 
-app.post('/sync', (req, res) => {
-  let { group_id, client_id, messages, merkle: clientMerkle } = req.body;
-
-  let trie = addMessages(group_id, messages);
-
+function messagesSinceLastSync(trie, group_id, client_id, clientMerkle) {
   let newMessages = [];
   if (clientMerkle) {
     let diffTime = merkle.diff(trie, clientMerkle);
     if (diffTime) {
       let timestamp = new Timestamp(diffTime, 0, '0').toString();
-      newMessages = queryAll(
+      newMessages = queryRun(
         `SELECT * FROM messages WHERE group_id = ? AND timestamp > ? AND timestamp NOT LIKE '%' || ? ORDER BY timestamp`,
         [group_id, timestamp, client_id]
       );
@@ -185,6 +174,18 @@ app.post('/sync', (req, res) => {
       }));
     }
   }
+  return newMessages;
+}
+
+app.post('/sync', (req, res) => {
+  let { group_id, client_id, messages, merkle: clientMerkle } = req.body;
+
+  // Add messages adds any new messages
+  let trie = addMessages(group_id, messages);
+
+  // This part decideds which messages to
+  // send back to sync-ing party
+  let newMessages = messagesSinceLastSync(trie, group_id, client_id, clientMerkle/*... arguments? */);
 
   res.send(
     JSON.stringify({
