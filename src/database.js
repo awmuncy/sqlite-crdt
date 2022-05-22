@@ -38,42 +38,6 @@ async function InitDatabase() {
   }
 
 
-  function addMessages(groupId, messages) {
-    let trie = getMerkle(groupId);
-
-    queryRun('BEGIN');
-
-    try {
-      for (let message of messages) {
-        const { dataset, row, column, value, timestamp } = message;
-
-        let res = queryRun(
-          `INSERT OR IGNORE INTO messages (timestamp, group_id, dataset, row, column, value) VALUES
-            (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-          [timestamp, groupId, dataset, row, column, serializeValue(value)]
-        );
-
-        // Should probably add this back
-        //if (res.changes === 1) {
-          // Update the merkle trie
-          trie = merkle.insert(trie, Timestamp.parse(message.timestamp));
-        //}
-      }
-
-      queryRun(
-        'INSERT OR REPLACE INTO messages_merkles (group_id, merkle) VALUES (?, ?)',
-        [groupId, JSON.stringify(trie)]
-      );
-      queryRun('COMMIT');
-    } catch (e) {
-      queryRun('ROLLBACK');
-      throw e;
-    }
-
-
-    return trie;
-  }
-
   function queryRun(sql, params = []) {
     let stmt = db.prepare(sql);
     stmt.bind(params);

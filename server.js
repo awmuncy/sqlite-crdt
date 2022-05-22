@@ -115,7 +115,9 @@ function addMessages(groupId, messages) {
     for (let message of messages) {
       const { dataset, row, column, value, timestamp } = message;
 
-      let res = queryRun(
+      let res = queryRun("SELECT * FROM messages WHERE timestamp = ?", [message.timestamp]);
+
+      queryRun(
         `INSERT OR IGNORE INTO messages (timestamp, group_id, dataset, row, column, value) VALUES
            (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
         [timestamp, groupId, dataset, row, column, serializeValue(value)]
@@ -123,10 +125,10 @@ function addMessages(groupId, messages) {
 
         
       // Should probably add this back
-      //if (res.changes === 1) {
+      if (res.length == 0) {
         // Update the merkle trie
         trie = merkle.insert(trie, Timestamp.parse(message.timestamp));
-      //}
+      }
     }
 
     queryRun(
