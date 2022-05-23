@@ -1,4 +1,4 @@
-import { Timestamp, MutableTimestamp } from "./timestamp";
+import { Timestamp, MutableTimestamp } from "./timestamp.js";
 import { v4 as uuid } from 'uuid';
 
 

@@ -1,24 +1,60 @@
 import initSqlJs from 'sql.js';
 import {v4 as uuidv4} from 'uuid';
-import { makeClientId, Clock } from "./lib/clock";
-import { Timestamp } from "./lib/timestamp";
-import merkle from './lib/merkle';
-import { deserializeValue, serializeValue } from './lib/serialize';
+import { makeClientId, Clock } from "./lib/clock.js";
+import { Timestamp } from "./lib/timestamp.js";
+import merkle from './lib/merkle.js';
+import { deserializeValue, serializeValue } from './lib/serialize.js';
+
+// async function other() {
+//     const SQL = await initSqlJs({
+//     // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
+//     // You can omit locateFile completely when running in node
+//         locateFile: file => file
+//     });
+
+//         var dbFileElm = document.querySelector('input[type=file]');
+// dbFileElm.onchange = async () => {
+//   const f = dbFileElm.files[0];
+//   const r = new FileReader();
+//   r.onload = async function() {
+//     const Uints = new Uint8Array(r.result);
+//     window.db = await InitDatabase(Uints);
+//   }
+//   r.readAsArrayBuffer(f);
+// }
+// }
+
+// other();
+
+
+// TODO: Make clock DB based instead of memory based (maybe?)
+// TODO: Sync with peer
+// TODO: Refactor into smaller files
+// TODO: remove 'my-group'
 
 
 
 
-async function InitDatabase() {
+async function Sqlite_CRDT(database_connection, options={}) {
 
-    const SQL = await initSqlJs({
-    // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
-    // You can omit locateFile completely when running in node
-        locateFile: file => file
-    });
+  let partner;
 
+  const db = database_connection;
 
-    const db = new SQL.Database();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages
+      (timestamp TEXT,
+      group_id TEXT,
+      dataset TEXT,
+      row TEXT,
+      column TEXT,
+      value TEXT,
+      PRIMARY KEY(timestamp, group_id));
 
+    CREATE TABLE IF NOT EXISTS messages_merkles
+      (group_id TEXT PRIMARY KEY,
+      merkle TEXT);
+  `);
 
   function dataMessages() {
     let database_messages = db.exec("SELECT * FROM messages;")[0]?.values || [];
@@ -30,7 +66,7 @@ async function InitDatabase() {
         dataset: row[2],
         row: row[3],
         column: row[4],
-        value: row[5]
+        value: deserializeValue(row[5])
       }
     });
 
@@ -65,6 +101,7 @@ async function InitDatabase() {
   }
 
   function apply(msg) {
+    if (options.messagesOnly) return;
     let tableExist = db.exec(`SELECT * FROM sqlite_schema WHERE type = 'table' AND name = '${msg.dataset}';`).length;
     if (!tableExist) { // Improve this to a query;
       throw new Error('Unknown dataset: ' + msg.dataset);
@@ -102,6 +139,35 @@ async function InitDatabase() {
 
     return existingMessages;
   }
+  function messagesSinceLastSync(trie, group_id, client_id, clientMerkle) {
+    let newMessages = [];
+    if (clientMerkle) {
+      let diffTime = merkle.diff(trie, clientMerkle);
+      if (diffTime) {
+        let timestamp = new Timestamp(diffTime, 0, '0').toString();
+        newMessages = queryRun(
+          `SELECT * FROM messages WHERE group_id = ? AND timestamp > ? AND timestamp NOT LIKE '%' || ? ORDER BY timestamp`,
+          [group_id, timestamp, client_id]
+        );
+
+
+        newMessages = newMessages.map(m => {
+            return {
+                timestamp: m[0],
+                group_id: m[1],
+                dataset: m[2],
+                row: m[3],
+                column: m[4],
+                value: deserializeValue(m[5])
+            }
+        });
+
+
+      }
+    }
+    return newMessages;
+  }
+
 
   function applyMessages(messages) {
     let existingMessages = compareMessages(messages);
@@ -125,8 +191,14 @@ async function InitDatabase() {
           clock.merkle,
           Timestamp.parse(msg.timestamp)
         );
+        queryRun(
+          'INSERT OR REPLACE INTO messages_merkles (group_id, merkle) VALUES (?, ?)',
+          ["my-group", JSON.stringify(clock.merkle)]
+        );
       }
     });
+
+    return clock.merkle;
 
   }
 
@@ -145,8 +217,18 @@ async function InitDatabase() {
     applyMessages(messages);
   }
 
-  async function sync(initialMessages = [], since = null) {
+  async function incomingSync(req) {
 
+    let { group_id, client_id, messages, merkle: clientMerkle } = req;
+    let trie = applyMessages(messages);
+
+    let newMessages = messagesSinceLastSync(trie, group_id, client_id, clientMerkle);
+
+
+    return { messages: newMessages, merkle: trie }
+  }
+
+  async function sync(initialMessages = [], since = null) {
 
 
     let messages = initialMessages;
@@ -157,13 +239,19 @@ async function InitDatabase() {
     }
 
     let result;
+    let req = {
+          group_id: 'my-group',
+          client_id: clock.timestamp.node(),
+          messages,
+          merkle: clock.merkle
+        };
     try {
-      result = await post({
-        group_id: 'my-group',
-        client_id: clock.timestamp.node(),
-        messages,
-        merkle: clock.merkle
-      });
+      if(!partner) {
+        result = await post(req);
+      } else {
+        result = await partner.incomingSync(req);
+      }
+
     } catch (e) {
       throw new Error('network-failure');
     }
@@ -262,57 +350,11 @@ async function InitDatabase() {
     }
   }
 
-    db.run(`
-        CREATE TABLE todos
-            (
-                id text primary key,
-                name text,
-                type text,
-                ordered number,
-                tombstone number default 0
-            );
-        CREATE TABLE users
-            (
-                id text primary key,
-                email text,
-                username text,
-                password text,
-                tombstone integer
-            );
-        CREATE TABLE habits
-            (
-                id text primary key ,
-                user_id text,
-                title text,
-                description text,
-                mode text,
-                target window integer,
-                interval integer,
-                sleep integer,
-                tombstone integer
-            );
-        CREATE TABLE checkins
-            (
-                id text primary key,
-                habit_id text,
-                moment integer,
-                description text,
-                status text,
-                tombstone integer
-            );
-          CREATE TABLE messages
-            (timestamp TEXT,
-            group_id TEXT,
-            dataset TEXT,
-            row TEXT,
-            column TEXT,
-            value TEXT,
-            PRIMARY KEY(timestamp, group_id));
+  function setPartner(newPartner) {
+    partner = newPartner;
+  }
 
-          CREATE TABLE messages_merkles
-            (group_id TEXT PRIMARY KEY,
-            merkle TEXT);
-    `);
+
 
 
   // TODO:  Check for client id, else make else ID
@@ -325,12 +367,72 @@ async function InitDatabase() {
       receiveMessages,
       update,
       sync,
-      dataMessages
+      dataMessages,
+      clock,
+      incomingSync,
+      setPartner
     };
+
+
+}
+
+async function InitDatabase() {
+
+    const SQL = await initSqlJs({
+    // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
+    // You can omit locateFile completely when running in node
+        locateFile: file => file
+    });
+    const db = new SQL.Database();
+
+    db.run(`
+        CREATE TABLE IF NOT EXISTS todos
+            (
+                id text primary key,
+                name text,
+                type text,
+                ordered number,
+                tombstone number default 0
+            );
+        CREATE TABLE IF NOT EXISTS users
+            (
+                id text primary key,
+                email text,
+                username text,
+                password text,
+                tombstone integer
+            );
+        CREATE TABLE IF NOT EXISTS habits
+            (
+                id text primary key ,
+                user_id text,
+                title text,
+                description text,
+                mode text,
+                target window integer,
+                interval integer,
+                sleep integer,
+                tombstone integer
+            );
+        CREATE TABLE  IF NOT EXISTS checkins
+            (
+                id text primary key,
+                habit_id text,
+                moment integer,
+                description text,
+                status text,
+                tombstone integer
+            );
+
+    `);
+
+
+  return Sqlite_CRDT(db);
     
 }
 
 
 export {
-    InitDatabase
+    InitDatabase,
+    Sqlite_CRDT
 };

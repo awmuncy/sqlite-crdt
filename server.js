@@ -1,13 +1,15 @@
-let express = require('express');
-let bodyParser = require('body-parser');
-let cors = require('cors');
-let { Timestamp } = require('./server_lib/timestamp');
-let merkle = require('./server_lib/merkle');
-const initSqlJs = require('sql.js');
-const fs = require('fs');
-
+import express from 'express';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+// let { Timestamp } = require('./server_lib/timestamp');
+// let merkle = require('./server_lib/merkle');
+import initSqlJs from 'sql.js';
+import fs from 'fs';
+import path from 'path';
+import { Sqlite_CRDT } from './src/database.js';
 
 let db;
+let crdt; 
 async function main() {
 
     
@@ -24,23 +26,11 @@ async function main() {
       var data = fs.readFileSync('./db.db');
       db = new SQL.Database(data);
     } catch(e) {
-        db = new SQL.Database(data);    
-        db.run(`
-          CREATE TABLE messages
-            (timestamp TEXT,
-            group_id TEXT,
-            dataset TEXT,
-            row TEXT,
-            column TEXT,
-            value TEXT,
-            PRIMARY KEY(timestamp, group_id));
-
-          CREATE TABLE messages_merkles
-            (group_id TEXT PRIMARY KEY,
-            merkle TEXT);`);
+        db = new SQL.Database();    
     }
     
     // Create a database
+    crdt = await Sqlite_CRDT(db, {messagesOnly:true});
 
     console.log("SQL is ready");
 
@@ -166,7 +156,7 @@ function messagesSinceLastSync(trie, group_id, client_id, clientMerkle) {
               dataset: m[2],
               row: m[3],
               column: m[4],
-              value: m[5]
+              value: deserializeValue(m[5])
           }
       });
 
@@ -179,20 +169,28 @@ function messagesSinceLastSync(trie, group_id, client_id, clientMerkle) {
   return newMessages;
 }
 
-app.post('/sync', (req, res) => {
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  next();
+});
+app.use(express.static(path.resolve('./')));
+
+app.post('/sync', async (req, res) => {
   let { group_id, client_id, messages, merkle: clientMerkle } = req.body;
 
-  // Add messages adds any new messages
-  let trie = addMessages(group_id, messages);
+  let back = await crdt.incomingSync(req.body);
 
-  // This part decideds which messages to
-  // send back to sync-ing party
-  let newMessages = messagesSinceLastSync(trie, group_id, client_id, clientMerkle/*... arguments? */);
+
+  let data = db.export();
+const buffer = Buffer.from(data);
+fs.writeFileSync("./db.db", buffer);
+
 
   res.send(
     JSON.stringify({
       status: 'ok',
-      data: { messages: newMessages, merkle: trie }
+      data: back
     })
   );
 });
