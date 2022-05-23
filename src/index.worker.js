@@ -24,7 +24,7 @@ async function run() {
     PRAGMA page_size=8192;
   `);
 
-  globalThis.crdt = await Sqlite_CRDT(db);
+  globalThis.crdt = await Sqlite_CRDT(db, {debug: true});
 
   self.addEventListener('message', function(event) {
       console.log("Received from parent", event);

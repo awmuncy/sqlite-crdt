@@ -5,30 +5,6 @@ import { Timestamp } from "./lib/timestamp.js";
 import merkle from './lib/merkle.js';
 import { deserializeValue, serializeValue } from './lib/serialize.js';
 
-// async function other() {
-//     const SQL = await initSqlJs({
-//     // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
-//     // You can omit locateFile completely when running in node
-//         locateFile: file => file
-//     });
-
-//         var dbFileElm = document.querySelector('input[type=file]');
-// dbFileElm.onchange = async () => {
-//   const f = dbFileElm.files[0];
-//   const r = new FileReader();
-//   r.onload = async function() {
-//     const Uints = new Uint8Array(r.result);
-//     window.db = await InitDatabase(Uints);
-//   }
-//   r.readAsArrayBuffer(f);
-// }
-// }
-
-// other();
-
-
-// TODO: Make clock DB based instead of memory based (maybe?)
-// TODO: Sync with peer
 // TODO: Refactor into smaller files
 // TODO: remove 'my-group'
 
@@ -56,7 +32,7 @@ async function Sqlite_CRDT(database_connection, options={}) {
       merkle TEXT);
   `);
 
-  function dataMessages() {
+  function listMessages() {
     let database_messages = db.exec("SELECT * FROM messages;")[0]?.values || [];
 
     let db_messages = database_messages.map(row => {
@@ -117,7 +93,7 @@ async function Sqlite_CRDT(database_connection, options={}) {
     // find the latest message that exists for the dataset/row/column
     // for each incoming message, so sort it first
 
-    let sortedMessages = [...dataMessages()].sort((m1, m2) => {
+    let sortedMessages = [...listMessages()].sort((m1, m2) => {
       if (m1.timestamp < m2.timestamp) {
         return 1;
       } else if (m1.timestamp > m2.timestamp) {
@@ -235,7 +211,7 @@ async function Sqlite_CRDT(database_connection, options={}) {
 
     if (since) {
       let timestamp = new Timestamp(since, 0, '0').toString();
-      messages = dataMessages().filter(msg => msg.timestamp >= timestamp);
+      messages = listMessages().filter(msg => msg.timestamp >= timestamp);
     }
 
     let result;
@@ -284,11 +260,6 @@ async function Sqlite_CRDT(database_connection, options={}) {
       `);
   }
 
-
-  function Tombstone(dataset, id) {
-      UpdateInto(dataset, 'tombstone', id, 1);
-  }
-
   function insert(table, row) {
     let id = uuidv4();
     let fields = Object.keys(row);
@@ -324,7 +295,7 @@ async function Sqlite_CRDT(database_connection, options={}) {
     );
   }
 
-  function delete_(table, id) {
+  function tombstone(table, id) {
     sendMessages([
       {
         dataset: table,
@@ -355,6 +326,11 @@ async function Sqlite_CRDT(database_connection, options={}) {
   }
 
 
+  const debug = {
+    listMessages,
+    db
+  };
+
 
 
   // TODO:  Check for client id, else make else ID
@@ -362,14 +338,17 @@ async function Sqlite_CRDT(database_connection, options={}) {
   clock.merkle = getMerkle('my-group');
 
     return { 
-      db,
       insert,
-      receiveMessages,
       update,
+      tombstone,
       sync,
-      dataMessages,
-      clock,
+      debug: options.debug ? debug : null,
+
+      // These are off. 
+      // TODO: Sync and incoming sync, better naming or merge
       incomingSync,
+
+      // TODO: 'setPartner' should be part of 'incoming sync'
       setPartner
     };
 
@@ -427,7 +406,7 @@ async function InitDatabase() {
     `);
 
 
-  return Sqlite_CRDT(db);
+  return Sqlite_CRDT(db, {debug: true});
     
 }
 
