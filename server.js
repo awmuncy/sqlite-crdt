@@ -6,7 +6,7 @@ import cors from 'cors';
 import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
-import { Sqlite_CRDT } from './src/database.js';
+import crdtDriver from './src/crdtDriver.js';
 
 let db;
 let crdt; 
@@ -30,7 +30,7 @@ async function main() {
     }
     
     // Create a database
-    crdt = await Sqlite_CRDT(db, {messagesOnly:true});
+    crdt = await crdtDriver(db, {messagesOnly:true});
 
     console.log("SQL is ready");
 
