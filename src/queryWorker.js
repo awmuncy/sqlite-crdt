@@ -1,4 +1,6 @@
-export default function querier(worker) {
+export default function querier(worker, db) {
+
+
 
   async function query(queryText) {
     const message = {
@@ -33,18 +35,30 @@ export default function querier(worker) {
       });
   }
 
+  async function sync(req) {
+    let responseFromSync = await sendQuery({
+      type: "crdt_sync",
+      req
+    });
+    console.log("Response", responseFromSync);
+
+    return responseFromSync;
+  }
+
   async function sendQuery(message) {
     const id = Math.random();
     message.id = id;
 
     const openQuery = new Promise((resolve, reject) => {
       worker.postMessage(message);
+
       setTimeout(() => reject(), 30000);
 
       worker.addEventListener('message', function listener(event) {
-
         if (event.data?.id === id) {
+
           resolve(event.data.payload);
+          console.log("The worker resolved with", event.data.payload);
           worker.removeEventListener('message', listener);
         }
       });
@@ -52,7 +66,26 @@ export default function querier(worker) {
     return await openQuery;    
   }
 
+  function awaitReady() {
+    worker.addEventListener('message', (event) => {
+      if (event.data==="CRDT_WORKER_READY") {
+        db.addPeer({
+          node_id: "worker",
+          incomingSync: async req => {
+            return await sync(req);
+          }
+        });
+        
+        db.sync([]);
+      }
+    })
+
+  }
+
+  awaitReady();
+
   return {
+    sync,
     query,
     insert,
     update,

@@ -26,7 +26,10 @@ import { deserializeValue, serializeValue } from './lib/serialize.js';
  */
 export default async function crdtDriver(database_connection, options={}) {
 
-  let partner;
+
+
+  let peers = [];
+  
 
   const db = database_connection;
 
@@ -190,7 +193,7 @@ export default async function crdtDriver(database_connection, options={}) {
 
   function sendMessages(messages) {
     applyMessages(messages);
-    sync(messages);
+    sync(messages, peers);
   }
 
   function receiveMessages(messages) {
@@ -209,12 +212,23 @@ export default async function crdtDriver(database_connection, options={}) {
 
     let newMessages = messagesSinceLastSync(trie, group_id, client_id, clientMerkle);
 
+    sync(newMessages, peers.filter(peer=>peer.client_id!==client_id));
+
 
     return { messages: newMessages, merkle: trie }
   }
 
+  async function sync(messages, specified_peers) {
+    if(!specified_peers) {
+      specified_peers = peers
+    }
+    specified_peers.forEach(peer => {
+      console.log("Syncing with peer:", peer.node_id);
+      syncWithPeer(messages, peer);
+    });
+  }
 
-  async function sync(initialMessages = [], since = null) {
+  async function syncWithPeer(initialMessages = [], peer, since = null) {
 
 
     let messages = initialMessages;
@@ -232,14 +246,10 @@ export default async function crdtDriver(database_connection, options={}) {
           merkle: clock.merkle
         };
     try {
-      if(!partner) {
-        result = await post(req);
-      } else {
-        result = await partner.incomingSync(req);
-      }
-
+      result = await peer.incomingSync(req);
+      console.log(`Result from peer ${peer.node_id}`, result)
     } catch (e) {
-      throw new Error('network-failure');
+      throw new Error(`network-failure`);
     }
 
     if (result.messages.length > 0) {
@@ -257,7 +267,7 @@ export default async function crdtDriver(database_connection, options={}) {
         );
       }
 
-      return sync([], diffTime);
+      return syncWithPeer([], peer, diffTime);
     }
   }
 
@@ -331,8 +341,8 @@ export default async function crdtDriver(database_connection, options={}) {
     }
   }
 
-  function setPartner(newPartner) {
-    partner = newPartner;
+  function addPeer(peer) {
+    peers.push(peer);
   }
 
 
@@ -343,6 +353,14 @@ export default async function crdtDriver(database_connection, options={}) {
 
 
 
+  function setSyncServer() {
+    addPeer({
+      node_id: "server",
+      incomingSync: async req => await post(req)
+    });
+  }
+
+
 
   const clock = new Clock(new Timestamp(0, 0, makeClientId()));
   clock.merkle = getMerkle('my-group');
@@ -351,10 +369,11 @@ export default async function crdtDriver(database_connection, options={}) {
         insert,
         update,
         tombstone,
-        sync,
         debug: options.debug ? debug : null,
         incomingSync,
-        setPartner
+        addPeer,
+        setSyncServer,
+        sync
     };
 
 

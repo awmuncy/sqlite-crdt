@@ -7,14 +7,23 @@ import querier from "./queryWorker.js";
 
 
 
-export function PersistentStoreStartup() {
+async function PersistentStoreStartup() {
     let webworker = new Worker(new URL('./application.worker.js', import.meta.url));
     initBackend(webworker);
 
-    return querier(webworker);
+    window.db = await InitDatabase();
+
+    let quer = querier(webworker, window.db);
+
+
+    return quer;
 }
 
 
 async function main() {
-    return await InitDatabase();
+
+    window.quer = await PersistentStoreStartup();
+
+    return;
 }
+main();
