@@ -6,7 +6,7 @@ import { deserializeValue, serializeValue } from './lib/serialize.js';
 
 // TODO: Refactor into smaller files
 // TODO: remove 'my-group'
-// TODO: Rename or merge 'sync' and 'incomingSync'
+// TODO: Rename or merge 'sync' and 'deliverMessages'
 // TODO: 'setPartner' should be part of 'incoming sync'
 // TODO:  Check for client id, else make else ID
 
@@ -21,7 +21,7 @@ import { deserializeValue, serializeValue } from './lib/serialize.js';
  * @returns {function} crdt_driver.tombstone
  * @returns {function} crdt_driver.sync
  * @returns {Object} crdt_driver.debug
- * @returns {function} crdt_driver.incomingSync
+ * @returns {function} crdt_driver.deliverMessages
  * @returns {function} crdt_driver.setPartner 
  */
 export default async function crdtDriver(database_connection, options={}) {
@@ -127,6 +127,7 @@ export default async function crdtDriver(database_connection, options={}) {
 
     return existingMessages;
   }
+  
   function messagesSinceLastSync(trie, group_id, client_id, clientMerkle) {
     let newMessages = [];
     if (clientMerkle) {
@@ -205,25 +206,26 @@ export default async function crdtDriver(database_connection, options={}) {
     applyMessages(messages);
   }
 
-  async function incomingSync(req) {
+  async function deliverMessages(req) {
 
     let { group_id, client_id, messages, merkle: clientMerkle } = req;
     let trie = applyMessages(messages);
 
     let newMessages = messagesSinceLastSync(trie, group_id, client_id, clientMerkle);
+    let peerToSyncWith = peers.filter(peer=>peer.client_id!==client_id);
 
-    sync(newMessages, peers.filter(peer=>peer.client_id!==client_id));
+    sync(newMessages, peerToSyncWith);
 
 
     return { messages: newMessages, merkle: trie }
   }
 
-  async function sync(messages, specified_peers) {
+  async function sync(messages=[], specified_peers) {
     if(!specified_peers) {
       specified_peers = peers
     }
     specified_peers.forEach(peer => {
-      console.log("Syncing with peer:", peer.node_id);
+      console.log("Syncing with peer:", peer.node_name);
       syncWithPeer(messages, peer);
     });
   }
@@ -245,9 +247,11 @@ export default async function crdtDriver(database_connection, options={}) {
           messages,
           merkle: clock.merkle
         };
+
+      console.log(req);
     try {
-      result = await peer.incomingSync(req);
-      console.log(`Result from peer ${peer.node_id}`, result)
+      result = await peer.deliverMessages(req);
+      console.log(`Result from peer ${peer.node_name}`, result)
     } catch (e) {
       throw new Error(`network-failure`);
     }
@@ -355,8 +359,8 @@ export default async function crdtDriver(database_connection, options={}) {
 
   function setSyncServer() {
     addPeer({
-      node_id: "server",
-      incomingSync: async req => await post(req)
+      node_name: "server",
+      deliverMessages: async req => await post(req)
     });
   }
 
@@ -365,16 +369,42 @@ export default async function crdtDriver(database_connection, options={}) {
   const clock = new Clock(new Timestamp(0, 0, makeClientId()));
   clock.merkle = getMerkle('my-group');
 
-    return { 
-        insert,
-        update,
-        tombstone,
-        debug: options.debug ? debug : null,
-        incomingSync,
-        addPeer,
-        setSyncServer,
-        sync
-    };
+  function getNodeId() {
+    return clock.timestamp.node();
+  }
+
+  function bootstrap(group_id) {
+    let allMessages = queryRun(
+          `SELECT * FROM messages WHERE group_id = ? ORDER BY timestamp`,
+          [group_id]
+    );
+
+    let newMessages = allMessages.map(m => {
+            return {
+                timestamp: m[0],
+                group_id: m[1],
+                dataset: m[2],
+                row: m[3],
+                column: m[4],
+                value: deserializeValue(m[5])
+            }
+        });
+        return newMessages;
+  }
+
+  return { 
+      insert,
+      update,
+      tombstone,
+      debug: options.debug ? debug : null,
+      deliverMessages,
+      addPeer,
+      setSyncServer,
+      sync,
+      getNodeId,
+      bootstrap,
+      receiveMessages
+  };
 
 
 }

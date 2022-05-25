@@ -35,6 +35,14 @@ export default function querier(worker, db) {
       });
   }
 
+  async function startup() {
+    
+    const initMessages = await sendQuery({
+      type: "crdt_bootstrap"
+    });
+    db.receiveMessages(initMessages);
+  }
+
   async function sync(req) {
     let responseFromSync = await sendQuery({
       type: "crdt_sync",
@@ -58,7 +66,6 @@ export default function querier(worker, db) {
         if (event.data?.id === id) {
 
           resolve(event.data.payload);
-          console.log("The worker resolved with", event.data.payload);
           worker.removeEventListener('message', listener);
         }
       });
@@ -68,15 +75,16 @@ export default function querier(worker, db) {
 
   function awaitReady() {
     worker.addEventListener('message', (event) => {
-      if (event.data==="CRDT_WORKER_READY") {
+      if (event.data.type==="CRDT_WORKER_READY") {
         db.addPeer({
-          node_id: "worker",
-          incomingSync: async req => {
+          client_id: event.data.client_id,
+          node_name: "worker",
+          deliverMessages: async req => {
             return await sync(req);
           }
         });
         
-        db.sync([]);
+        startup();
       }
     })
 

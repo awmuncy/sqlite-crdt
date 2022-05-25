@@ -12,10 +12,6 @@ let db;
 let crdt; 
 async function main() {
 
-    
-    // or if you are in a browser:
-    // const initSqlJs = window.initSqlJs;
-
     const SQL = await initSqlJs({
     // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
     // You can omit locateFile completely when running in node
@@ -30,7 +26,7 @@ async function main() {
     }
     
     // Create a database
-    crdt = await crdtDriver(db, {messagesOnly:true, serverMode: true});
+    crdt = await crdtDriver(db, {messagesOnly:true, debug:true, serverMode: true});
 
     console.log("SQL is ready");
 
@@ -55,14 +51,11 @@ app.use((req, res, next) => {
 app.use(express.static(path.resolve('./')));
 
 app.post('/sync', async (req, res) => {
-  let { group_id, client_id, messages, merkle: clientMerkle } = req.body;
+  let back = await crdt.deliverMessages(req.body);
 
-  let back = await crdt.incomingSync(req.body);
-
-
-  let data = db.export();
+  let data = crdt.debug.db.export();
   const buffer = Buffer.from(data);
-  fs.writeFileSync("./b.db", buffer);
+  fs.writeFileSync("./db.db", buffer);
 
 
   res.send(

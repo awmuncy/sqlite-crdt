@@ -29,7 +29,7 @@ async function PersistentStoreWorkerStartup() {
   globalThis.crdt = await crdtDriver(db, {debug: true, messagesOnly: true});
   globalThis.crdt.setSyncServer();
 
-  self.postMessage("CRDT_WORKER_READY");
+  self.postMessage({type: "CRDT_WORKER_READY", client_id: globalThis.crdt.getNodeId()});
 
   self.addEventListener('message', async function(event) {
 
@@ -52,9 +52,12 @@ async function PersistentStoreWorkerStartup() {
         self.postMessage({id:event.data.id, payload: response});
         break;
       case "crdt_sync":
-        response = await globalThis.crdt.incomingSync(event.data.req);  
+        response = await globalThis.crdt.deliverMessages(event.data.req);  
         self.postMessage({id:event.data.id, payload: response});
         break;
+      case "crdt_bootstrap":
+        response = crdt.bootstrap('my-group');
+        self.postMessage({id:event.data.id, payload: response});
     }
       
   });
