@@ -1,11 +1,10 @@
 import {v4 as uuidv4} from 'uuid';
-import { makeClientId, Clock } from "./lib/clock.js";
-import { Timestamp } from "./lib/timestamp.js";
-import merkle from './lib/merkle.js';
-import { deserializeValue, serializeValue } from './lib/serialize.js';
+import { makeClientId, Clock } from "./clock.js";
+import { Timestamp } from "./timestamp.js";
+import merkle from './merkle.js';
+import { deserializeValue, serializeValue } from './serialize.js';
 
 // TODO: Refactor into smaller files
-// TODO: remove 'my-group'
 // TODO: Rename or merge 'sync' and 'deliverMessages'
 // TODO: 'setPartner' should be part of 'incoming sync'
 // TODO:  Check for client id, else make else ID
@@ -26,12 +25,16 @@ import { deserializeValue, serializeValue } from './lib/serialize.js';
  */
 export default async function crdtDriver(database_connection, options={}) {
 
-
+  let group = options.group;
 
   let peers = [];
   
 
   const db = database_connection;
+
+  function setGroup(setToGroup) {
+    group = setToGroup;
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS messages
@@ -171,7 +174,7 @@ export default async function crdtDriver(database_connection, options={}) {
       let res = queryRun(
         `INSERT OR IGNORE INTO messages (timestamp, group_id, dataset, row, column, value) VALUES
            (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-        [msg.timestamp, "my-group", msg.dataset, msg.row, msg.column, serializeValue(msg.value)]
+        [msg.timestamp, group, msg.dataset, msg.row, msg.column, serializeValue(msg.value)]
       );
 
 
@@ -182,7 +185,7 @@ export default async function crdtDriver(database_connection, options={}) {
         );
         queryRun(
           'INSERT OR REPLACE INTO messages_merkles (group_id, merkle) VALUES (?, ?)',
-          ["my-group", JSON.stringify(clock.merkle)]
+          [group, JSON.stringify(clock.merkle)]
         );
       }
     });
@@ -232,7 +235,6 @@ export default async function crdtDriver(database_connection, options={}) {
 
   async function syncWithPeer(initialMessages = [], peer, since = null) {
 
-
     let messages = initialMessages;
 
     if (since) {
@@ -242,7 +244,7 @@ export default async function crdtDriver(database_connection, options={}) {
 
     let result;
     let req = {
-          group_id: 'my-group',
+          group_id: group,
           client_id: clock.timestamp.node(),
           messages,
           merkle: clock.merkle
@@ -367,7 +369,7 @@ export default async function crdtDriver(database_connection, options={}) {
 
 
   const clock = new Clock(new Timestamp(0, 0, makeClientId()));
-  clock.merkle = getMerkle('my-group');
+  clock.merkle = getMerkle(group);
 
   function getNodeId() {
     return clock.timestamp.node();
@@ -399,11 +401,12 @@ export default async function crdtDriver(database_connection, options={}) {
       debug: options.debug ? debug : null,
       deliverMessages,
       addPeer,
-      setSyncServer,
+      setSyncServer, // TODO: Can be extracted
       sync,
       getNodeId,
       bootstrap,
-      receiveMessages
+      receiveMessages,
+      setGroup
   };
 
 

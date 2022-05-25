@@ -1,4 +1,4 @@
-import { Timestamp, MutableTimestamp } from "./timestamp.js";
+import { MutableTimestamp } from "./timestamp.js";
 import { v4 as uuid } from 'uuid';
 
 
@@ -12,20 +12,6 @@ class Clock {
   }
 }
 
-// function serializeClock(clock) {
-//   return JSON.stringify({
-//     timestamp: clock.timestamp.toString(),
-//     merkle: clock.merkle
-//   });
-// }
-
-// function deserializeClock(clock) {
-//   const data = JSON.parse(clock);
-//   return {
-//     timestamp: Timestamp.from(Timestamp.parse(data.timestamp)),
-//     merkle: data.merkle
-//   };
-// }
 
 function makeClientId() {
   return uuid()

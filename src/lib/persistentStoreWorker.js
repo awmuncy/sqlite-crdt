@@ -4,7 +4,7 @@ import IndexedDBBackend from 'absurd-sql/dist/indexeddb-backend.js';
 import crdtDriver from './crdtDriver.js';
 
 
-async function PersistentStoreWorkerStartup() {
+async function PersistentStoreWorkerStartup(options) {
   let SQL = await initSqlJs({ locateFile: file => file });
   let sqlFS = new SQLiteFS(SQL.FS, new IndexedDBBackend());
   SQL.register_for_idb(sqlFS);
@@ -26,10 +26,8 @@ async function PersistentStoreWorkerStartup() {
     PRAGMA page_size=8192;
   `);
 
-  globalThis.crdt = await crdtDriver(db, {debug: true, messagesOnly: true});
+  globalThis.crdt = await crdtDriver(db, {debug: true, messagesOnly: true, group: options.group});
   globalThis.crdt.setSyncServer();
-
-  self.postMessage({type: "CRDT_WORKER_READY", client_id: globalThis.crdt.getNodeId()});
 
   self.addEventListener('message', async function(event) {
 
@@ -56,11 +54,15 @@ async function PersistentStoreWorkerStartup() {
         self.postMessage({id:event.data.id, payload: response});
         break;
       case "crdt_bootstrap":
-        response = crdt.bootstrap('my-group');
+        response = crdt.bootstrap(options.group);
         self.postMessage({id:event.data.id, payload: response});
     }
       
   });
+
+  self.postMessage({type: "CRDT_WORKER_READY", client_id: globalThis.crdt.getNodeId()});
+  await crdt.sync();
+
 }
 
-PersistentStoreWorkerStartup();
+export { PersistentStoreWorkerStartup };

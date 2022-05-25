@@ -1,12 +1,10 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
-// let { Timestamp } = require('./server_lib/timestamp');
-// let merkle = require('./server_lib/merkle');
 import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
-import crdtDriver from './src/crdtDriver.js';
+import crdtDriver from './src/lib/crdtDriver.js';
 
 let db;
 let crdt; 
@@ -26,7 +24,7 @@ async function main() {
     }
     
     // Create a database
-    crdt = await crdtDriver(db, {messagesOnly:true, debug:true, serverMode: true});
+    crdt = await crdtDriver(db, {messagesOnly:true, debug:true, serverMode: true, group: "my-group"});
 
     console.log("SQL is ready");
 
@@ -39,10 +37,6 @@ main();
 let app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '20mb' }));
-
-
-
-
 app.use((req, res, next) => {
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');

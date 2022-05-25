@@ -1,5 +1,5 @@
 import initSqlJs from 'sql.js';
-import crdtDriver from './crdtDriver.js';
+import crdtDriver from '../lib/crdtDriver.js';
 
 
 async function InitDatabase() {
@@ -53,7 +53,7 @@ async function InitDatabase() {
     `);
 
 
-  return crdtDriver(db, {debug: true});
+  return crdtDriver(db, {debug: true, group: "my-group"});
     
 }
 

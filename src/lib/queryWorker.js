@@ -1,7 +1,5 @@
 export default function querier(worker, db) {
 
-
-
   async function query(queryText) {
     const message = {
       type: "database_query",
