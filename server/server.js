@@ -4,7 +4,7 @@ import cors from 'cors';
 import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
-import crdtDriver from './src/lib/crdtDriver.js';
+import crdtDriver from '../src/lib/crdtDriver.js';
 
 let db;
 let crdt; 
@@ -44,7 +44,7 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.resolve('./')));
 
-app.post('/sync', async (req, res) => {
+app.post('/crdt-sync', async (req, res) => {
   let back = await crdt.deliverMessages(req.body);
 
   let data = crdt.debug.db.export();

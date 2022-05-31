@@ -10,5 +10,5 @@ mix
             }
         }
     })
-    .js('./src/application/application.js', './dist/application.js')
+    .js('./application.js', '../dist/application.js')
     .sourceMaps();

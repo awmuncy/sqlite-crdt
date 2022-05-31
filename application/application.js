@@ -1,23 +1,21 @@
-import { InitDatabase } from "./database.js";
+import { initDatabase } from "./database.js";
 
 import { initBackend } from 'absurd-sql/dist/indexeddb-main-thread.js';
-import querier from "../lib/queryWorker.js";
-
-
-
+import querier from "../src/queryWorker.js";
 
 
 async function PersistentStoreStartup(options) {
     let webworker = new Worker(new URL('./application.worker.js', import.meta.url));
     initBackend(webworker);
 
-    window.db = await InitDatabase();
+    window.db = await initDatabase();
 
     let quer = querier(webworker, window.db);
 
     if(options.polling) {
         setInterval(() => {
-            window.db.sync();
+            console.log("?");
+            // window.db.sync();
         }, 10000);
     }
 

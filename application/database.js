@@ -1,8 +1,8 @@
 import initSqlJs from 'sql.js';
-import crdtDriver from '../lib/crdtDriver.js';
+import crdtDriver from '../src/crdtDriver.js';
 
 
-async function InitDatabase() {
+async function initDatabase() {
 
     const SQL = await initSqlJs({
     // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
@@ -59,5 +59,5 @@ async function InitDatabase() {
 
 
 export {
-    InitDatabase
+    initDatabase
 };

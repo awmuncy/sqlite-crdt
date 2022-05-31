@@ -80,7 +80,7 @@ export default async function crdtDriver(database_connection, options={}) {
   }
 
   async function post(data) {
-    let res = await fetch('http://localhost:8006/sync', {
+    let res = await fetch('http://localhost:5499/crdt-sync', {
       method: 'POST',
       body: JSON.stringify(data),
       headers: {
@@ -180,7 +180,7 @@ export default async function crdtDriver(database_connection, options={}) {
 
       if (!existingMsg || existingMsg.timestamp !== msg.timestamp) {
         clock.merkle = merkle.insert(
-          clock.merkle,
+          getMerkle(group),
           Timestamp.parse(msg.timestamp)
         );
         queryRun(
@@ -206,20 +206,16 @@ export default async function crdtDriver(database_connection, options={}) {
       Timestamp.recv(clock, Timestamp.parse(msg.timestamp))
     );
 
-    applyMessages(messages);
+    return applyMessages(messages);
   }
 
   async function deliverMessages(req) {
 
     let { group_id, client_id, messages, merkle: clientMerkle } = req;
-    let trie = applyMessages(messages);
+    let trie = receiveMessages(messages);
 
     let newMessages = messagesSinceLastSync(trie, group_id, client_id, clientMerkle);
-    let peerToSyncWith = peers.filter(peer=>peer.client_id!==client_id);
-
-    sync(newMessages, peerToSyncWith);
-
-
+    
     return { messages: newMessages, merkle: trie }
   }
 
@@ -228,9 +224,9 @@ export default async function crdtDriver(database_connection, options={}) {
       specified_peers = peers
     }
     specified_peers.forEach(peer => {
-      console.log("Syncing with peer:", peer.node_name);
       syncWithPeer(messages, peer);
     });
+    syncEvent();
   }
 
   async function syncWithPeer(initialMessages = [], peer, since = null) {
@@ -247,13 +243,10 @@ export default async function crdtDriver(database_connection, options={}) {
           group_id: group,
           client_id: clock.timestamp.node(),
           messages,
-          merkle: clock.merkle
+          merkle: getMerkle(group)
         };
-
-      console.log(req);
     try {
       result = await peer.deliverMessages(req);
-      console.log(`Result from peer ${peer.node_name}`, result)
     } catch (e) {
       throw new Error(`network-failure`);
     }
@@ -262,10 +255,12 @@ export default async function crdtDriver(database_connection, options={}) {
       receiveMessages(result.messages);
     }
 
-    let diffTime = merkle.diff(result.merkle, clock.merkle);
+    let diffTime = merkle.diff(result.merkle, getMerkle(group));
 
     if (diffTime) {
       if (since && since === diffTime) {
+
+
         throw new Error(
           'A bug happened while syncing and the client ' +
             'was unable to get in sync with the server. ' +
@@ -328,7 +323,7 @@ export default async function crdtDriver(database_connection, options={}) {
         row: id,
         column: 'tombstone',
         value: 1,
-        timestamp: Timestamp.send(getClock()).toString()
+        timestamp: Timestamp.send(clock).toString()
       }
     ]);
   }
@@ -394,6 +389,11 @@ export default async function crdtDriver(database_connection, options={}) {
         return newMessages;
   }
 
+  let syncEvent = () => {}
+  function setSyncEvent(proposedEvent) {
+    syncEvent = proposedEvent;
+  }
+
   return { 
       insert,
       update,
@@ -406,7 +406,8 @@ export default async function crdtDriver(database_connection, options={}) {
       getNodeId,
       bootstrap,
       receiveMessages,
-      setGroup
+      setGroup, 
+      setSyncEvent
   };
 
 
