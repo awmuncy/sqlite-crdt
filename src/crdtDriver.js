@@ -23,7 +23,7 @@ import { deserializeValue, serializeValue } from './serialize.js';
  * @returns {function} crdt_driver.deliverMessages
  * @returns {function} crdt_driver.setPartner 
  */
-export default async function crdtDriver(database_connection, options={}) {
+export default function crdtDriver(database_connection, options={}) {
 
   let group = options.group;
 
@@ -52,7 +52,7 @@ export default async function crdtDriver(database_connection, options={}) {
   `);
 
   function listMessages() {
-    let database_messages = db.exec("SELECT * FROM messages;")[0]?.values || [];
+    let database_messages = db.exec("SELECT * FROM messages ORDER BY timestamp;")[0]?.values || [];
 
     let db_messages = database_messages.map(row => {
       return {
@@ -162,13 +162,19 @@ export default async function crdtDriver(database_connection, options={}) {
 
 
   function applyMessages(messages) {
+    
     let existingMessages = compareMessages(messages);
-
+    
     messages.forEach(msg => {
       let existingMsg = existingMessages.get(msg);
 
       if (!existingMsg || existingMsg.timestamp < msg.timestamp) {
         apply(msg);
+      }
+
+      let resy = queryRun('SELECT * FROM messages WHERE timestamp = ?', [msg.timestamp]);
+      if(resy.length > 0) {
+        return;
       }
 
       let res = queryRun(
@@ -178,17 +184,17 @@ export default async function crdtDriver(database_connection, options={}) {
       );
 
 
-      if (!existingMsg || existingMsg.timestamp !== msg.timestamp) {
-        clock.merkle = merkle.insert(
-          getMerkle(group),
-          Timestamp.parse(msg.timestamp)
-        );
-        queryRun(
-          'INSERT OR REPLACE INTO messages_merkles (group_id, merkle) VALUES (?, ?)',
-          [group, JSON.stringify(clock.merkle)]
-        );
-      }
+      clock.merkle = merkle.insert(
+        clock.merkle,
+        Timestamp.parse(msg.timestamp)
+      );
+      queryRun(
+        'INSERT OR REPLACE INTO messages_merkles (group_id, merkle) VALUES (?, ?)',
+        [group, JSON.stringify(clock.merkle)]
+      );
+  
     });
+
 
     return clock.merkle;
 
@@ -201,12 +207,15 @@ export default async function crdtDriver(database_connection, options={}) {
   }
 
   function receiveMessages(messages) {
-
+    
     messages.forEach(msg =>
       Timestamp.recv(clock, Timestamp.parse(msg.timestamp))
     );
+    
+    
+    let merkle = applyMessages(messages);
 
-    return applyMessages(messages);
+    return merkle; 
   }
 
   async function deliverMessages(req) {
@@ -256,13 +265,13 @@ export default async function crdtDriver(database_connection, options={}) {
     }
 
     let diffTime = merkle.diff(result.merkle, getMerkle(group));
-
+  
     if (diffTime) {
-      if (since && since === diffTime) {
+      if (since && since === diffTime) {;
 
 
         throw new Error(
-          'A bug happened while syncing and the client ' +
+          'A bug happened while syncing  and the client ' +
             'was unable to get in sync with the server. ' +
             "This is an internal error that shouldn't happen"
         );
@@ -407,7 +416,8 @@ export default async function crdtDriver(database_connection, options={}) {
       bootstrap,
       receiveMessages,
       setGroup, 
-      setSyncEvent
+      setSyncEvent,
+      listMessages
   };
 
 
