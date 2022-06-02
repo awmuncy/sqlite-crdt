@@ -80,7 +80,7 @@ export default function crdtDriver(database_connection, options={}) {
   }
 
   async function post(data) {
-    let res = await fetch('http://localhost:5499/crdt-sync', {
+    let res = await fetch('/crdt-sync', {
       method: 'POST',
       body: JSON.stringify(data),
       headers: {
