@@ -12,7 +12,6 @@ class Clock {
   }
 }
 
-
 function makeClientId() {
   return uuid()
     .replace(/-/g, '')

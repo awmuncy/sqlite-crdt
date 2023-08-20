@@ -1,4 +1,4 @@
-import {v4 as uuidv4} from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 import { makeClientId, Clock } from "./clock.js";
 import { Timestamp } from "./timestamp.js";
 import merkle from './merkle.js';
@@ -282,7 +282,8 @@ export default function crdtDriver(database_connection, options={}) {
   }
 
   function UpdateInto(dataset, column, id, value) {
-    
+
+      // TODO: This should be a prepared statement    
       db.run(`
 
           INSERT INTO ${dataset} (id, ${column}) VALUES('${id}', '${value}')
